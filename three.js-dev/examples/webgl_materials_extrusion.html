@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<title>three.js webgl - parallax mapping</title>
+		<meta charset="utf-8">
+		<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+		<style>
+			body {
+				background:#000;
+				color:#fff;
+				padding:0;
+				margin:0;
+				font-weight: bold;
+				overflow:hidden;
+			}
+
+			a {	color: #ffffff;	}
+
+			#info {
+				position: absolute;
+				top: 0px; width: 100%;
+				color: #ffffff;
+				padding: 5px;
+				font-family:Monospace;
+				font-size:10px;
+				text-align:center;
+			}
+
+			#oldie {
+				background:rgb(200,100,0) !important;
+				color:#fff;
+			}
+
+			#vt { display:none }
+			#vt, #vt a { color:orange; }
+		</style>
+	</head>
+
+	<body>
+
+		<div id="info">
+			<a href="http://threejs.org">Three.js</a> parallax mapping <br />
+			Oryginal shaders authors:
+			<a href="http://sunandblackcat.com/tipFullView.php?topicid=28">Igor Dyhta</a>,
+			<a href="http://mmikkelsen3d.blogspot.sk/2012/02/parallaxpoc-mapping-and-no-tangent.html">Morten S. Mikkelsen</a><br />
+			Texture by <a href="http://agf81.deviantart.com/">AGF81</a>
+		</div>
+
+		<script src="../build/three.js"></script>
+		<script src="js/Detector.js"></script>
+		<script src="js/libs/dat.gui.min.js"></script>
+		<script src="js/libs/stats.min.js"></script>
+
+		<script src="js/controls/OrbitControls.js"></script>
+
+		<script src="js/shaders/ParallaxShader.js"></script>
+
+		<script>
+			if ( ! Detector.webgl ) Detector.addGetWebGLMessage();
+
+      const PORTAL_SHADER = {
+        uniforms: {
+          map: {
+            type: 't',
+            value: null,
+          },
+          bumpMap: {
+            type: 't',
+            value: null,
+          },
+        },
+        vertexShader: `\
+          uniform sampler2D bumpMap;
+          varying vec2 vUv;
+          varying float vDepth;
+
+          void main() {
+            vec3 position2 = position;
+            float depth = texture2D(bumpMap, uv).r;
+            if (depth > 0.99) {
+              depth = 10000.0;
+            }
+            vDepth = depth;
+            position2.z += 1.0 - depth;
+
+            vec4 mvPosition = modelViewMatrix * vec4(position2, 1.0);
+            vec4 position3 = projectionMatrix * mvPosition;
+
+            gl_Position = position3;
+            vUv = uv;
+          }
+        `,
+        fragmentShader: `\
+          uniform sampler2D map;
+          varying vec2 vUv;
+          varying float vDepth;
+
+          void main() {
+            if (vDepth > 1.0) {
+              discard;
+            }
+            gl_FragColor = texture2D(map, vUv);
+          }
+        `,
+      };
+
+			var stats;
+			var camera, scene, material, renderer;
+
+			init();
+			animate();
+
+			function init() {
+
+				var container = document.createElement( 'div' );
+				document.body.appendChild( container );
+
+				camera = new THREE.PerspectiveCamera( 45, window.innerWidth / window.innerHeight, 0.01, 10 );
+				camera.position.z = 2;
+				scene = new THREE.Scene();
+
+				initScene();
+
+				renderer = new THREE.WebGLRenderer();
+				renderer.setPixelRatio( window.devicePixelRatio );
+				renderer.setSize( window.innerWidth, window.innerHeight );
+				renderer.vr.enabled = true;
+				container.appendChild( renderer.domElement );
+
+				renderer.gammaInput = true;
+				renderer.gammaOutput = true;
+
+				var controls = new THREE.OrbitControls( camera, renderer.domElement );
+
+				stats = new Stats();
+				container.appendChild( stats.dom );
+
+				window.addEventListener( 'resize', onWindowResize, false );
+
+			}
+
+			function onWindowResize() {
+
+				camera.aspect = window.innerWidth / window.innerHeight;
+				camera.updateProjectionMatrix();
+
+				renderer.setSize( window.innerWidth, window.innerHeight );
+
+			}
+
+			function initScene() {
+
+				var shader = THREE.ParallaxShader;
+				var uniforms = THREE.UniformsUtils.clone( shader.uniforms );
+				var parameters = {
+					fragmentShader: shader.fragmentShader,
+					vertexShader: shader.vertexShader,
+					uniforms: uniforms
+				};
+
+				var textureLoader = new THREE.TextureLoader();
+
+        const material = (() => {
+          const uniforms = THREE.UniformsUtils.clone(PORTAL_SHADER.uniforms);
+          const material = new THREE.ShaderMaterial({
+            uniforms,
+            vertexShader: PORTAL_SHADER.vertexShader,
+            fragmentShader: PORTAL_SHADER.fragmentShader,
+          });
+          return material;
+        })();
+
+				material.uniforms.map.value = textureLoader.load('home/home.png');
+				material.uniforms.bumpMap.value = (() => {
+          const texture = new THREE.DataTexture(
+            null,
+            1024,
+            1024,
+            THREE.LuminanceFormat,
+            THREE.FloatType,
+            THREE.UVMapping,
+            THREE.ClampToEdgeWrapping,
+            THREE.ClampToEdgeWrapping,
+            THREE.LinearFilter,
+            THREE.LinearFilter
+          );
+
+          fetch('home/home.depth')
+            .then(res => res.arrayBuffer())
+            .then(arrayBuffer => {
+              texture.image.data = new Float32Array(arrayBuffer);
+              texture.needsUpdate = true;
+            })
+            .catch(err => {
+              console.warn(err.stack);
+            });
+          return texture;
+        })();
+
+				var geometry = new THREE.PlaneBufferGeometry(1, 1, 200, 200);
+				var mesh = new THREE.Mesh( geometry, material );
+				scene.add( mesh );
+
+			}
+
+			function animate() {
+
+				requestAnimationFrame( animate );
+
+				render();
+				stats.update();
+
+			}
+
+			function render() {
+
+				renderer.render( scene, camera );
+
+			}
+
+      window.addEventListener('keypress', e => {
+        if (e.keyCode === 112) { // F1
+          navigator.getVRDisplays()
+            .then(displays => {
+              if (displays.length > 0) {
+                const display = displays[0];
+                renderer.vr.setDevice(display);
+
+                display.requestPresent([{
+                  source: renderer.domElement,
+                }]);
+              }
+            })
+            .catch(err => {
+              console.warn(err);
+            });
+        }
+      });
+		</script>
+
+	</body>
+</html>

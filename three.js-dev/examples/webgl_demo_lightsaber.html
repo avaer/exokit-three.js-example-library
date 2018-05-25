@@ -1,0 +1,726 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<title>three.js webgl - lightsaber combat demo</title>
+		<meta charset="utf-8">
+		<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+		<style>
+			body {
+				background:#000;
+				color:#fff;
+				padding:0;
+				margin:0;
+				font-weight: bold;
+				overflow:hidden;
+			}
+
+			a {	color: #ffffff;	}
+
+			#info {
+				position: absolute;
+				top: 0px; width: 100%;
+				color: #ffffff;
+				padding: 5px;
+				font-family:Monospace;
+				font-size:10px;
+				text-align:center;
+			}
+
+			#oldie {
+				background:rgb(200,100,0) !important;
+				color:#fff;
+			}
+
+			#vt { display:none }
+			#vt, #vt a { color:orange; }
+		</style>
+	</head>
+
+	<body>
+    <canvas id=canvas></canvas>
+		<script src="../build/three.js"></script>
+    <script src="js/loaders/OBJLoader.js"></script>
+    <script src="lightsaber/three-extra/SkyShader.js"></script>
+    <script src="lightsaber/sprite3d.js"></script>
+		<script>
+      const FLOOR_SIZE = 20;
+      const GRAB_DISTANCE = 0.1;
+      const BULLET_RATE = 200;
+      const BULLET_SPEED = 0.002;
+      const BULLET_TTL = 10 * 1000;
+      const DRONE_DISTANCE = 3;
+      const forwardVector = new THREE.Vector3(0, 0, -1);
+      const zeroQuaternion = new THREE.Quaternion();
+      const localTransformRotationQuaterion = new THREE.Quaternion().setFromUnitVectors(
+        new THREE.Vector3(0, 1, 0),
+        new THREE.Vector3(0, 0, -1)
+      );
+      const localVector = new THREE.Vector3();
+      const localVector2 = new THREE.Vector3();
+      const localQuaternion = new THREE.Quaternion();
+      const localQuaternion2 = new THREE.Quaternion();
+
+      const camera = new THREE.PerspectiveCamera( 90, window.innerWidth / window.innerHeight, 0.1, 10 * 1024 );
+      camera.position.y = 0.1;
+      camera.position.z = 1;
+
+      const scene = new THREE.Scene();
+
+      const canvas = document.getElementById('canvas');
+      canvas.width = innerWidth;
+      canvas.height = innerHeight;
+      const renderer = new THREE.WebGLRenderer({
+        canvas,
+      });
+      renderer.setPixelRatio( window.devicePixelRatio );
+      renderer.setSize( window.innerWidth, window.innerHeight );
+      renderer.sortObjects = false;
+      renderer.vr.enabled = true;
+
+      const container = document.createElement( 'div' );
+			document.body.appendChild( container );
+      container.appendChild(renderer.domElement);
+
+      const ambientLight = new THREE.AmbientLight(0x808080);
+      scene.add(ambientLight);
+
+      const directionalLight = new THREE.DirectionalLight(0xFFFFFF, 1);
+      directionalLight.position.set(1, 1, 1);
+      scene.add(directionalLight);
+
+      let lightsaberMesh = null;
+
+      const controllerMeshes = [null, null];
+      for (let i = 0; i < controllerMeshes.length; i++) {
+        const controllerMesh = new THREE.Object3D();
+        controllerMesh.position.set(i === 0 ? -0.1 : 0.1, 0, 0);
+        controllerMesh.quaternion.setFromUnitVectors(
+          new THREE.Vector3(0, 0, -1),
+          new THREE.Vector3(0, -1, -1)
+        );
+
+        controllerMesh.lastGrabbed = false;
+
+        scene.add(controllerMesh);
+        controllerMeshes[i] = controllerMesh;
+      }
+
+      const controllerMeshLoader = new THREE.OBJLoader();
+      controllerMeshLoader.setPath('models/obj/vive-controller/');
+      controllerMeshLoader.load('vr_controller_vive_1_5.obj', object => {
+        const textureLoader = new THREE.TextureLoader();
+        textureLoader.setPath('models/obj/vive-controller/');
+
+        const controllerMesh = object.children[0];
+        controllerMesh.material.map = textureLoader.load('onepointfive_texture.png');
+        controllerMesh.material.specularMap = textureLoader.load('onepointfive_spec.png');
+
+        controllerMeshes[0].add(object.clone());
+        controllerMeshes[1].add(object.clone());
+      });
+
+      const sky = (() => {
+        const sky = new THREE.Sky();
+        const {uniforms} = sky;
+        uniforms.turbidity.value = 10;
+        uniforms.rayleigh.value = 2;
+        uniforms.luminance.value = 1;
+        uniforms.mieCoefficient.value = 0.005;
+        uniforms.mieDirectionalG.value = 0.8;
+
+        sky.inclination = 0;
+        sky.azimuth = 0;
+
+        return sky;
+      })();
+      scene.add(sky.mesh);
+
+      const _updateSunIntensity = () => {
+        const DAY_NIGHT_SPEED = 100;
+        const sunDistance = 5000;
+        const cutoffAngle = Math.PI/1.95;
+        const steepness = 1.5;
+
+        sky.azimuth = (0.05 + (((Date.now() + 200000) / 1000) * DAY_NIGHT_SPEED / 100000)) % 1;
+        const theta = Math.PI * (sky.inclination - 0.5);
+        const phi = 2 * Math.PI * (sky.azimuth - 0.5);
+
+        const x = sunDistance * Math.cos(phi);
+        const y = sunDistance * Math.sin(phi) * Math.sin(theta);
+        const z = sunDistance * Math.sin(phi) * Math.cos(theta);
+
+        sky.uniforms.sunPosition.value.set(x, y, z);
+      };
+      _updateSunIntensity();
+
+      (() => {
+        const graphImg = new Image();
+        graphImg.src = 'lightsaber/graphy.png';
+        graphImg.crossOrigin = 'Anonymous';
+        graphImg.onload = () => {
+          const floorMesh = (() => {
+            const geometry = new THREE.PlaneBufferGeometry(FLOOR_SIZE, FLOOR_SIZE)
+              .applyMatrix(new THREE.Matrix4().makeRotationFromQuaternion(
+                new THREE.Quaternion().setFromUnitVectors(
+                  new THREE.Vector3(0, 0, 1),
+                  new THREE.Vector3(0, 1, 0)
+                )
+              ));
+            const uvs = geometry.attributes.uv.array;
+            const numUvs = uvs.length / 2;
+            for (let i = 0; i < numUvs; i++) {
+              uvs[i * 2 + 0] *= FLOOR_SIZE / 10 * 2;
+              uvs[i * 2 + 1] *= FLOOR_SIZE / 10;
+            }
+
+            const texture = new THREE.Texture(
+              graphImg,
+              THREE.UVMapping,
+              THREE.RepeatWrapping,
+              THREE.RepeatWrapping,
+              THREE.NearestFilter,
+              THREE.NearestFilter,
+              THREE.RGBAFormat,
+              THREE.UnsignedByteType,
+              1
+            );
+            texture.needsUpdate = true;
+            const material = new THREE.MeshBasicMaterial({
+              map: texture,
+              side: THREE.DoubleSide,
+            });
+            const mesh = new THREE.Mesh(geometry, material);
+            return mesh;
+          })();
+          scene.add(floorMesh);
+        };
+        graphImg.onerror = err => {
+          console.warn(err.stack);
+        };
+      })();
+
+      (() => {
+        const bladeMaterial = new THREE.MeshBasicMaterial({
+          color: 0xF44336,
+          flatShading: true,
+        });
+        const whiteMaterial = new THREE.MeshBasicMaterial({
+          color: 0xFFFFFF,
+        });
+
+        const img = new Image();
+        img.crossOrigin = 'Anonymous';
+        img.src = 'lightsaber/lightsaber.png';
+        img.onload = () => {
+          lightsaberMesh = (() => {
+            const mesh = new THREE.Object3D();
+
+            const itemMesh = sprite3d.makeSpriteMesh(img);
+            mesh.add(itemMesh);
+
+            const bladeMesh = (() => {
+              const object = new THREE.Object3D();
+              // object.visible = false;
+
+              const coreMesh = (() => {
+                const geometry = new THREE.BoxBufferGeometry(0.02 * 0.9, 1, 0.02 * 0.9)
+                  .applyMatrix(new THREE.Matrix4().makeTranslation(0, (0.1 / 2) + 0.02 + (1 / 2), 0));
+                const material = bladeMaterial;
+
+                return new THREE.Mesh(geometry, material);
+              })();
+              object.add(coreMesh);
+              object.coreMesh = coreMesh;
+
+              const leftMesh = (() => {
+                const geometry = new THREE.BoxBufferGeometry(0.1, 0.02 * 0.9, 0.02 * 0.9)
+                  .applyMatrix(new THREE.Matrix4().makeTranslation(-(0.1 / 2) - (0.1 / 2), (0.1 / 2) + (0.02 / 2), 0));
+                const material = bladeMaterial;
+
+                return new THREE.Mesh(geometry, material);
+              })();
+              object.add(leftMesh);
+              object.leftMesh = leftMesh;
+
+              const rightMesh = (() => {
+                const geometry = new THREE.BoxBufferGeometry(0.1, 0.02 * 0.9, 0.02 * 0.9)
+                  .applyMatrix(new THREE.Matrix4().makeTranslation((0.1 / 2) + (0.1 / 2), (0.1 / 2) + (0.02 / 2), 0));
+                const material = bladeMaterial;
+
+                return new THREE.Mesh(geometry, material);
+              })();
+              object.add(rightMesh);
+              object.rightMesh = rightMesh;
+
+              return object;
+            })();
+            mesh.add(bladeMesh);
+            mesh.bladeMesh = bladeMesh;
+
+            const hitMesh = (() => {
+              const geometry = new THREE.BoxBufferGeometry(0.1, 1, 0.1);
+              const material = whiteMaterial;
+
+              const mesh = new THREE.Mesh(geometry, material);
+              mesh.position.set(0, (0.1 / 2) + 0.02 + (1 / 2), 0);
+              mesh.visible = false;
+              return mesh;
+            })();
+            mesh.add(hitMesh);
+            mesh.hitMesh = hitMesh;
+
+            mesh.setValue = value => {
+              const {coreMesh, leftMesh, rightMesh} = bladeMesh;
+
+              coreMesh.scale.set(1, value, 1);
+              leftMesh.scale.set(value, 1, 1);
+              rightMesh.scale.set(value, 1, 1);
+              hitMesh.scale.set(1, value, 1);
+
+              coreMesh.updateMatrixWorld();
+              leftMesh.updateMatrixWorld();
+              rightMesh.updateMatrixWorld();
+              hitMesh.updateMatrixWorld();
+            };
+
+            mesh.grabIndex = -1;
+            mesh.ignited = false;
+            mesh.value = 0;
+
+            return mesh;
+          })();
+          scene.add(lightsaberMesh);
+        };
+        img.onerror = err => {
+          console.warn(err.stack);
+        };
+      })();
+
+      const droneMesh = (() => {
+        const object = new THREE.Object3D();
+        object.position.y = 2;
+        // object.position.copy(itemElement.position);
+
+        const coreMesh = (() => {
+          const geometry = new THREE.SphereBufferGeometry(0.1, 8, 6);
+          const material = new THREE.MeshPhongMaterial({
+            color: 0xCCCCCC,
+            flatShading: true,
+          });
+
+          const mesh = new THREE.Mesh(geometry, material);
+          return mesh;
+        })();
+        object.add(coreMesh);
+        object.coreMesh = coreMesh;
+
+        const eyeballMesh = (() => {
+          const geometry = new THREE.CylinderBufferGeometry(0.05, 0.05, 0.015, 8, 1)
+            .applyMatrix(new THREE.Matrix4().makeRotationX(-Math.PI / 2));
+          const material = new THREE.MeshPhongMaterial({
+            color: 0xEEEEEE,
+            flatShading: true,
+          });
+
+          const mesh = new THREE.Mesh(geometry, material);
+          mesh.position.z = 0.1 - 0.015;
+          mesh.rotation.y = Math.PI;
+          mesh.rotation.order = camera.rotation.order;
+          return mesh;
+        })();
+        object.add(eyeballMesh);
+        object.eyeballMesh = eyeballMesh;
+
+        const pupilMesh = (() => {
+          const geometry = new THREE.CylinderBufferGeometry(0.03, 0.03, 0.015, 8, 1)
+            .applyMatrix(new THREE.Matrix4().makeRotationX(-Math.PI / 2));
+          const material = new THREE.MeshPhongMaterial({
+            color: 0x111111,
+            flatShading: true,
+          });
+
+          const mesh = new THREE.Mesh(geometry, material);
+          mesh.position.z = 0.1 - 0.005;
+          mesh.rotation.y = Math.PI;
+          mesh.rotation.order = camera.rotation.order;
+          return mesh;
+        })();
+        object.add(pupilMesh);
+        object.pupilMesh = pupilMesh;
+
+        return object;
+      })();
+      scene.add(droneMesh);
+
+      const bulletGeometry = new THREE.BoxBufferGeometry(0.01, 0.01, 0.1);
+      const bulletMaterial = new THREE.MeshBasicMaterial({
+        color: 0x2196F3,
+        flatShading: true,
+      });
+      const _makeBulletMesh = () => {
+        const geometry = bulletGeometry;
+        const material = bulletMaterial;
+
+        const mesh = new THREE.Mesh(geometry, material);
+        mesh.startTime = Date.now();
+        mesh.lastTime = mesh.lastTime;
+        mesh.intersected = false;
+        return mesh;
+      };
+
+      const droneState = (() => {
+        const dronePosition = droneMesh.position.clone();
+        const now = Date.now();
+        return {
+          direction: forwardVector.clone(),
+          startPosition: dronePosition,
+          endPosition: dronePosition,
+          startTime: now,
+          endTime: now,
+        };
+      })();
+      const bullets = [];
+
+      const position = new THREE.Vector3();
+      const velocity = new THREE.Vector3();
+      let lastTime = Date.now();
+      let lastBulletTime = lastTime;
+			function render() {
+        const currentTime = Date.now();
+        const timePassed = Math.max(currentTime - lastTime, 1);
+
+        const _updateControllers = () => {
+          const gamepads = navigator.getGamepads();
+
+          for (let i = 0; i < gamepads.length; i++) {
+            const gamepad = gamepads[i];
+            if (gamepad) {
+              const controllerMesh = controllerMeshes[i];
+              controllerMesh.position.fromArray(gamepad.pose.position);
+              controllerMesh.quaternion.fromArray(gamepad.pose.orientation);
+              controllerMesh.updateMatrixWorld();
+            }
+          }
+        };
+        const _updateLightsaberGrab = () => {
+          if (lightsaberMesh) {
+            const gamepads = navigator.getGamepads();
+            for (let i = 0; i < gamepads.length; i++) {
+              const gamepad = gamepads[i];
+              if (gamepad) {
+                const controllerMesh = controllerMeshes[i];
+
+                const grabbed = gamepad.buttons[2].pressed;
+                const {lastGrabbed} = controllerMesh;
+
+                if (grabbed && !lastGrabbed && lightsaberMesh.grabIndex === -1) {
+                  const distance = controllerMesh.position.distanceTo(lightsaberMesh.position);
+                  if (distance < GRAB_DISTANCE) {
+                    lightsaberMesh.grabIndex = i;
+                  }
+                } else if (lastGrabbed && !grabbed && lightsaberMesh.grabIndex === i) {
+                  const distance = controllerMesh.position.distanceTo(lightsaberMesh.position);
+                  if (distance < GRAB_DISTANCE) {
+                    lightsaberMesh.grabIndex = -1;
+                  }
+                }
+
+                controllerMesh.lastGrabbed = grabbed;
+              }
+            }
+          }
+        };
+        const _updateLightsaberIgnition = () => {
+          if (lightsaberMesh) {
+            if (lightsaberMesh.grabIndex !== -1) {
+              const gamepads = navigator.getGamepads();
+              const gamepad = gamepads[lightsaberMesh.grabIndex];
+              const triggered = gamepad.buttons[1].pressed;
+              lightsaberMesh.ignited = triggered;
+            } else {
+              lightsaberMesh.ignited = false;
+            }
+          }
+        };
+        const _updateLightsaberPosition = () => {
+          if (lightsaberMesh) {
+            if (lightsaberMesh.grabIndex !== -1) {
+              const controllerMesh = controllerMeshes[lightsaberMesh.grabIndex];
+              lightsaberMesh.position.copy(controllerMesh.position);
+              lightsaberMesh.quaternion
+                .copy(controllerMesh.quaternion)
+                .multiply(localTransformRotationQuaterion);
+              lightsaberMesh.scale.copy(controllerMesh.scale);
+              lightsaberMesh.updateMatrixWorld();
+            }
+
+            if (lightsaberMesh.ignited) {
+              lightsaberMesh.value = Math.min(lightsaberMesh.value + ((currentTime - lastTime) / 1000 * 25), 1);
+            } else {
+              lightsaberMesh.value = Math.max(lightsaberMesh.value - ((currentTime - lastTime) / 1000 * 2), 0);
+            }
+            const {bladeMesh} = lightsaberMesh;
+            if (lightsaberMesh.value < 0.001) {
+              if (bladeMesh.visible) {
+                bladeMesh.visible = false;
+              }
+            } else {
+              lightsaberMesh.setValue(lightsaberMesh.value);
+
+              if (!bladeMesh.visible) {
+                bladeMesh.visible = true;
+              }
+            }
+          }
+        };
+        const _updateDrone = () => {
+          const _updateDroneMesh = () => {
+            const _updateDroneMove = () => {
+              if (currentTime >= droneState.endTime) {
+                const _getNearbyDirection = oldDirection => {
+                  for (;;) {
+                    const randomDirection = new THREE.Vector3(-0.5 + Math.random(), (-0.5 + Math.random()) * 0.2, -0.5 + Math.random()).normalize();
+
+                    if (randomDirection.distanceTo(oldDirection) <= 1.5) {
+                      return randomDirection;
+                    }
+                  }
+                };
+
+                droneState.direction = _getNearbyDirection(droneState.direction);
+                droneState.startPosition = droneMesh.position.clone();
+                droneState.endPosition = camera.position.clone().add(
+                  forwardVector.clone()
+                    .multiplyScalar(DRONE_DISTANCE)
+                    .applyQuaternion(new THREE.Quaternion().setFromUnitVectors(
+                      forwardVector,
+                      droneState.direction
+                    ))
+                );
+                droneState.startTime = currentTime;
+                droneState.endTime = currentTime + ((0.5 + (Math.random() * 0.5)) * 2000);
+              }
+
+              const {startPosition, endPosition, startTime, endTime} = droneState;
+              const newPosition = startPosition.clone().add(
+                endPosition.clone().sub(startPosition)
+                  .multiplyScalar((currentTime - startTime) / (endTime - startTime))
+              );
+              droneMesh.position.copy(newPosition);
+            };
+            const _updateDroneLook = () => {
+              droneMesh.lookAt(camera.position);
+            };
+            const _updateDroneMatrix = () => {
+              droneMesh.updateMatrixWorld();
+            };
+
+            _updateDroneMove();
+            _updateDroneLook();
+            _updateDroneMatrix();
+          };
+          const _addBullets = () => {
+            const timeDiff = currentTime - lastBulletTime;
+
+            if (timeDiff >= BULLET_RATE) {
+              const {pupilMesh} = droneMesh;
+
+              const position = localVector;
+              const rotation = localQuaternion;
+              const scale = localVector2;
+              pupilMesh.matrixWorld.decompose(position, rotation, scale);
+
+              const bullet = _makeBulletMesh();
+              bullet.position.copy(position);
+              bullet.quaternion.copy(rotation);
+              bullet.scale.copy(scale);
+              scene.add(bullet);
+
+              bullet.updateMatrixWorld();
+
+              bullets.push(bullet);
+
+              lastBulletTime = currentTime;
+            }
+          };
+          const _resetDrone = () => {
+            droneMesh.position.set(0, 1.5, 0);
+            droneMesh.quaternion.copy(zeroQuaternion);
+            droneMesh.updateMatrixWorld();
+          };
+          const _resetBullets = () => {
+            if (bullets.length > 0) {
+              for (let i = 0; i < bullets.length; i++) {
+                const bullet = bullets[i];
+                scene.remove(bullet);
+              }
+              bullets.length = 0;
+            }
+          };
+
+          const _isLive = () => Boolean(lightsaberMesh) && lightsaberMesh.grabIndex !== -1;
+          if (_isLive()) {
+            _updateDroneMesh();
+            _addBullets();
+          } else {
+            _resetDrone();
+            _resetBullets();
+          }
+        };
+        const _updateBullets = () => {
+          const oldBullets = bullets.slice();
+          for (let i = 0; i < oldBullets.length; i++) {
+            const bullet = oldBullets[i];
+            const {startTime} = bullet;
+            const timeSinceStart = currentTime - startTime;
+
+            if (timeSinceStart < BULLET_TTL) {
+              const {lastTime} = bullet;
+              const timeDiff = currentTime - lastTime;
+
+              bullet.position.add(
+                new THREE.Vector3(0, 0, -BULLET_SPEED * timeDiff)
+                  .applyQuaternion(bullet.quaternion)
+              );
+              bullet.updateMatrixWorld();
+
+              bullet.lastTime = currentTime;
+            } else {
+              scene.remove(bullet);
+              bullets.splice(bullets.indexOf(bullet), 1);
+            }
+          }
+        };
+        const _updateIntersection = () => {
+          if (lightsaberMesh) {
+            const {bladeMesh} = lightsaberMesh;
+
+            if (bladeMesh.visible) {
+              const {hitMesh} = lightsaberMesh;
+              hitMesh.visible = true;
+
+              const hitMeshRotation = hitMesh.getWorldQuaternion(localQuaternion);
+              const raycaster = new THREE.Raycaster();
+              raycaster.near = 0.01;
+              raycaster.far = 100000;
+
+              for (let i = 0; i < bullets.length; i++) {
+                const bullet = bullets[i];
+
+                if (!bullet.intersected) {
+                  const bulletPosition = localVector;
+                  const bulletRotation = localQuaternion2;
+                  const bulletScale = localVector2;
+                  bullet.matrixWorld.decompose(bulletPosition, bulletRotation, bulletScale);
+
+                  const ray = new THREE.Ray(
+                    bulletPosition.add(
+                      forwardVector.clone()
+                        .multiplyScalar(-0.05)
+                        .applyQuaternion(bulletRotation)
+                    ),
+                    forwardVector.clone()
+                      .multiplyScalar(0.1)
+                      .applyQuaternion(bulletRotation)
+                  );
+                  raycaster.ray = ray;
+                  const intersections = raycaster.intersectObject(hitMesh, true);
+
+                  if (intersections.length > 0) {
+                    const intersection = intersections[0];
+                    const {face} = intersection;
+                    const {normal} = face;
+                    const worldNormal = normal.clone().applyQuaternion(hitMeshRotation);
+                    /* const controllerLinearVelocity = lightsaberMesh.side !== null ? // XXX
+                      pose.getControllerLinearVelocity(lightsaberMesh.side)
+                    :
+                      zeroVector; */
+                    const reflectionVector = worldNormal.clone()
+                      // .add(controllerLinearVelocity.clone().multiplyScalar(2))
+                      .normalize();
+
+                    bullet.quaternion.setFromUnitVectors(
+                      forwardVector,
+                      reflectionVector
+                    );
+                    bullet.intersected = true;
+                  }
+                }
+              }
+
+              hitMesh.visible = false;
+            }
+          }
+        };
+        _updateControllers();
+        _updateLightsaberGrab();
+        _updateLightsaberIgnition();
+        _updateLightsaberPosition();
+        _updateDrone();
+        _updateBullets();
+        _updateIntersection();
+
+				renderer.render(scene, camera);
+
+        lastTime = currentTime;
+			}
+
+      function animate() {
+				requestAnimationFrame(animate);
+				render();
+			}
+			animate();
+
+      let displays = [];
+      if (navigator.getVRDisplays) {
+        navigator.getVRDisplays()
+          .then(newDisplays => {
+            displays = newDisplays;
+
+            const presentingDisplay = displays.find(display => display.isPresenting);
+            if (presentingDisplay) {
+              renderer.vr.setDevice(presentingDisplay);
+            }
+          })
+          .catch(err => {
+            console.warn(err);
+          });
+      }
+
+      window.addEventListener('resize', e => {
+        camera.aspect = window.innerWidth / window.innerHeight;
+				camera.updateProjectionMatrix();
+
+				renderer.setSize(window.innerWidth, window.innerHeight);
+      });
+      window.addEventListener('keypress', e => {
+        if (e.keyCode === 112) { // F1
+          const display = displays.find(display =>
+            display.constructor.name === 'VRDisplay'
+          );
+          if (display) {
+            display.requestPresent([{
+              source: canvas,
+            }])
+              .then(() => {
+                renderer.vr.setDevice(display);
+              });
+          }
+        } else if (e.keyCode === 113) { // F2
+          const display = displays.find(display =>
+            display.constructor.name === 'MLDisplay'
+          );
+          if (display) {
+            display.requestPresent([{source: canvas}])
+              .then(() => {
+                renderer.vr.setDevice(display);
+
+                scene.remove(sky.mesh);
+              });
+          }
+        }
+      });
+		</script>
+
+	</body>
+</html>

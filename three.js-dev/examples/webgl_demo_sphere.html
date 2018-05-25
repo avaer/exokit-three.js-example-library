@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<title>three.js webgl - sphere demo</title>
+		<meta charset="utf-8">
+		<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+		<style>
+			body {
+				background:#000;
+				color:#fff;
+				padding:0;
+				margin:0;
+				font-weight: bold;
+				overflow:hidden;
+			}
+
+			a {	color: #ffffff;	}
+
+			#info {
+				position: absolute;
+				top: 0px; width: 100%;
+				color: #ffffff;
+				padding: 5px;
+				font-family:Monospace;
+				font-size:10px;
+				text-align:center;
+			}
+
+			#oldie {
+				background:rgb(200,100,0) !important;
+				color:#fff;
+			}
+
+			#vt { display:none }
+			#vt, #vt a { color:orange; }
+		</style>
+	</head>
+
+	<body>
+    <canvas id=canvas></canvas>
+		<script src="../build/three.js"></script>
+		<script>
+      const camera = new THREE.PerspectiveCamera( 90, window.innerWidth / window.innerHeight, 0.1, 10 * 1024 );
+      camera.position.z = 1;
+      // camera.layers.enable(1);
+      // camera.layers.enable(2);
+
+      const scene = new THREE.Scene();
+      // scene.background = new THREE.Color(0x29b6f6);
+
+      const renderer = new THREE.WebGLRenderer();
+      renderer.setPixelRatio( window.devicePixelRatio );
+      renderer.setSize( window.innerWidth, window.innerHeight );
+      renderer.sortObjects = false;
+      renderer.vr.enabled = true;
+
+      const container = document.createElement( 'div' );
+			document.body.appendChild( container );
+      container.appendChild(renderer.domElement);
+
+      const ambientLight = new THREE.AmbientLight(0x808080);
+      scene.add(ambientLight);
+
+      const directionalLight = new THREE.DirectionalLight(0xFFFFFF, 1);
+      directionalLight.position.set(1, 1, 1);
+      scene.add(directionalLight);
+
+      const sphere = new THREE.Mesh(
+        new THREE.SphereBufferGeometry(0.2, 7, 5),
+        new THREE.MeshPhongMaterial({
+          color: new THREE.Color(0x4CAF50),
+          flatShading: true,
+        })
+      );
+      const startY = 0.2;
+      sphere.position.y = startY;
+      scene.add(sphere);
+
+      const position = new THREE.Vector3();
+      const velocity = new THREE.Vector3();
+      let lastTime = Date.now();
+			function render() {
+        const currentTime = Date.now();
+        const timePassed = Math.max(currentTime - lastTime, 1);
+
+        const _animateSphere = () => {
+          const newPosition = position.clone().add(velocity.clone().divideScalar(timePassed));
+          const rayBack = newPosition.clone().multiplyScalar((-1 / timePassed) * 0.25);
+          velocity.add(rayBack).multiplyScalar(0.98);
+          position.copy(newPosition);
+
+          sphere.position.copy(newPosition);
+          sphere.position.y = startY + Math.sin((currentTime * 0.00125) % (Math.PI * 2)) * 0.2;
+          sphere.rotation.y = (currentTime * 0.002) % (Math.PI * 2);
+        };
+        _animateSphere();
+
+				renderer.render(scene, camera);
+
+        lastTime = currentTime;
+			}
+
+      function animate() {
+				requestAnimationFrame(animate);
+				render();
+			}
+			animate();
+
+      let displays = [];
+      if (navigator.getVRDisplays) {
+        navigator.getVRDisplays()
+          .then(newDisplays => {
+            displays = newDisplays;
+
+            const presentingDisplay = displays.find(display => display.isPresenting);
+            if (presentingDisplay) {
+              renderer.vr.setDevice(presentingDisplay);
+            }
+          })
+          .catch(err => {
+            console.warn(err);
+          });
+      }
+
+      window.addEventListener('resize', e => {
+        camera.aspect = window.innerWidth / window.innerHeight;
+				camera.updateProjectionMatrix();
+
+				renderer.setSize(window.innerWidth, window.innerHeight);
+      });
+      window.addEventListener('keypress', e => {
+        if (e.keyCode === 112) { // F1
+          const display = displays.find(display =>
+            display.constructor.name === 'VRDisplay'
+          );
+          if (display) {
+            display.requestPresent([{
+              source: canvas,
+            }])
+              .then(() => {
+                renderer.vr.setDevice(display);
+              });
+          }
+        } else if (e.keyCode === 113) { // F2
+          const display = displays.find(display =>
+            display.constructor.name === 'MLDisplay'
+          );
+          if (display) {
+            display.requestPresent([{
+              source: canvas,
+            }])
+              .then(() => {
+                renderer.vr.setDevice(display);
+
+                scene.remove(sky.mesh);
+              });
+          }
+        }
+      });
+		</script>
+
+	</body>
+</html>
