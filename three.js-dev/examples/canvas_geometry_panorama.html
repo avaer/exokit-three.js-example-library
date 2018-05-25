@@ -230,6 +230,20 @@
 
 			}
 
+      if (navigator.getVRDisplays) {
+        navigator.getVRDisplays()
+          .then(displays => {
+            const presentingDisplay = displays.find(display => display.isPresenting);
+            if (presentingDisplay) {
+              renderer.vr.enabled = true;
+              renderer.vr.setDevice(presentingDisplay);
+            }
+          })
+          .catch(err => {
+            console.warn(err);
+          });
+      }
+
 		</script>
 	</body>
 </html>
