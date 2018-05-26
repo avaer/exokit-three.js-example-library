@@ -67,6 +67,7 @@
 				// loading manager
 
 				var loadingManager = new THREE.LoadingManager( function() {
+          console.log('load elf', elf);
 
 					scene.add( elf );
 
@@ -76,6 +77,7 @@
 
 				var loader = new THREE.ColladaLoader( loadingManager );
 				loader.load( './models/collada/elf/elf.dae', function ( collada ) {
+          console.log('load collada scene', collada);
 
 					elf = collada.scene;
 

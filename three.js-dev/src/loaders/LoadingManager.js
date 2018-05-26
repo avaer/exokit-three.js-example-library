@@ -18,6 +18,8 @@ function LoadingManager( onLoad, onProgress, onError ) {
 
 	this.itemStart = function ( url ) {
 
+    console.log('item start', url, new Error().stack);
+
 		itemsTotal ++;
 
 		if ( isLoading === false ) {
@@ -37,6 +39,8 @@ function LoadingManager( onLoad, onProgress, onError ) {
 	this.itemEnd = function ( url ) {
 
 		itemsLoaded ++;
+
+    console.log('item end', url, itemsLoaded, itemsTotal, new Error().stack);
 
 		if ( scope.onProgress !== undefined ) {
 

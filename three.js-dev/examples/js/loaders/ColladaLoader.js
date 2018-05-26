@@ -54,6 +54,8 @@ THREE.ColladaLoader.prototype = {
 
 	parse: function ( text, path ) {
 
+    console.log('collada parse', new Error().stack);
+
 		function getElementsByTagName( xml, name ) {
 
 			// Non recursive xml.getElementsByTagName() ...
@@ -1513,6 +1515,8 @@ THREE.ColladaLoader.prototype = {
 			}
 
 			var parameters = technique.parameters;
+
+      console.log('params', technique.parameters);
 
 			for ( var key in parameters ) {
 
@@ -3702,6 +3706,8 @@ THREE.ColladaLoader.prototype = {
 		console.timeEnd( 'THREE.ColladaLoader: Parse' );
 
 		console.time( 'THREE.ColladaLoader: Build' );
+
+    console.log('collada parse', new Error().stack);
 
 		buildLibrary( library.animations, buildAnimation );
 		buildLibrary( library.clips, buildAnimationClip );

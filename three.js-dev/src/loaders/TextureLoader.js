@@ -26,6 +26,8 @@ Object.assign( TextureLoader.prototype, {
 		loader.setCrossOrigin( this.crossOrigin );
 		loader.setPath( this.path );
 
+    console.log('texture load', url, new Error().stack);
+
 		loader.load( url, function ( image ) {
 
 			texture.image = image;
