@@ -48,7 +48,7 @@
 				scene = new THREE.Scene();
 				scene.background = new THREE.Color( 0xffffff );
 
-				var geometry = new THREE.BoxGeometry( 5, 5, 5);
+				var geometry = new THREE.BoxGeometry( 10, 10, 10);
 				var material = new THREE.MeshNormalMaterial();
 
 				root = new THREE.Mesh( geometry, material );
@@ -182,7 +182,7 @@
 				// camera.position.x += ( mouseX - camera.position.x ) * .05;
 				// camera.position.y += ( - mouseY - camera.position.y ) * .05;
 
-				camera.lookAt( scene.position );
+				// camera.lookAt( scene.position );
 
 				root.traverse( function ( object ) {
 
