@@ -56,8 +56,10 @@
 
 				container = document.getElementById( 'container' );
 
-				camera = new THREE.PerspectiveCamera( 70, window.innerWidth / window.innerHeight, 1, 1000 );
-				camera.position.z = 500;
+				camera = new THREE.PerspectiveCamera( 70, window.innerWidth / window.innerHeight);
+				camera.position.set( 8, 10, 8 );
+				camera.lookAt( new THREE.Vector3( 0, 3, 0 ) );
+
 				scene = new THREE.Scene();
 
 				clock = new THREE.Clock();
