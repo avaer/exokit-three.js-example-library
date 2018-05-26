@@ -52,8 +52,8 @@
 
 			function onWindowResize() {
 
-				camera.aspect = window.innerWidth / window.innerHeight;
-				camera.updateProjectionMatrix();
+				// camera.aspect = window.innerWidth / window.innerHeight;
+				// camera.updateProjectionMatrix();
 
 				renderer.setSize( window.innerWidth, window.innerHeight );
 
@@ -63,12 +63,25 @@
 
 				requestAnimationFrame( animate );
 
-				mesh.rotation.x += 0.005;
-				mesh.rotation.y += 0.01;
+				mesh.rotation.x += 0;
+				mesh.rotation.y += 0;
 
 				renderer.render( scene, camera );
 
 			}
+            if (navigator.getVRDisplays) {
+                navigator.getVRDisplays()
+                    .then(displays => {
+                        const presentingDisplay = displays.find(display => display.isPresenting);
+                        if (presentingDisplay) {
+                            renderer.vr.enabled = true;
+                            renderer.vr.setDevice(presentingDisplay);
+                        }
+                    })
+                    .catch(err => {
+                        console.warn(err);
+                    });
+            }
 
 		</script>
 
