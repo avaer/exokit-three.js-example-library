@@ -48,11 +48,11 @@
 				scene = new THREE.Scene();
 				scene.background = new THREE.Color( 0xffffff );
 
-				var geometry = new THREE.BoxGeometry( 2, 2, 2);
+				var geometry = new THREE.BoxGeometry( 5, 5, 5);
 				var material = new THREE.MeshNormalMaterial();
 
 				root = new THREE.Mesh( geometry, material );
-				root.position.x = 1000;
+				root.position.x = 0;
 				scene.add( root );
 
 				var amount = 200, object, parent = root;
@@ -155,8 +155,8 @@
 
 			function onDocumentMouseMove(event) {
 
-				mouseX = ( event.clientX - windowHalfX ) * 10;
-				mouseY = ( event.clientY - windowHalfY ) * 10;
+				// mouseX = ( event.clientX - windowHalfX ) * 10;
+				// mouseY = ( event.clientY - windowHalfY ) * 10;
 
 			}
 
