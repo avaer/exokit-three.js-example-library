@@ -1,9 +1,7 @@
-# exokit-skybox
-Exokit skybox for use with home.webmr.io
-
+# exokit-three.js-example-library
+Three.js examples ported over for use with Exokit VR.
 
 # Idea From three.js
 https://threejs.org/examples/#canvas_geometry_panorama_fisheye
 
-# Shout out to Jochum Skoglund
-https://github.com/webmixedreality/three.js/blob/dev/examples/canvas_geometry_panorama_fisheye.html
+Making all of three.js webgl meshes VR ready is my goal.
