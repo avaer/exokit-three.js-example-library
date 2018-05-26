@@ -143,11 +143,11 @@
 
 			function onWindowResize() {
 
-				windowHalfX = window.innerWidth / 2;
-				windowHalfY = window.innerHeight / 2;
+				// windowHalfX = window.innerWidth / 2;
+				// windowHalfY = window.innerHeight / 2;
 
-				camera.aspect = window.innerWidth / window.innerHeight;
-				camera.updateProjectionMatrix();
+				// camera.aspect = window.innerWidth / window.innerHeight;
+				// camera.updateProjectionMatrix();
 
 				renderer.setSize( window.innerWidth, window.innerHeight );
 
@@ -179,8 +179,8 @@
 				var ry = Math.sin( time * 0.3 ) * 0.1;
 				var rz = Math.sin( time * 0.2 ) * 0.1;
 
-				camera.position.x += ( mouseX - camera.position.x ) * .05;
-				camera.position.y += ( - mouseY - camera.position.y ) * .05;
+				// camera.position.x += ( mouseX - camera.position.x ) * .05;
+				// camera.position.y += ( - mouseY - camera.position.y ) * .05;
 
 				camera.lookAt( scene.position );
 
@@ -195,6 +195,19 @@
 				renderer.render( scene, camera );
 
 			}
+            if (navigator.getVRDisplays) {
+                navigator.getVRDisplays()
+                    .then(displays => {
+                        const presentingDisplay = displays.find(display => display.isPresenting);
+                        if (presentingDisplay) {
+                            renderer.vr.enabled = true;
+                            renderer.vr.setDevice(presentingDisplay);
+                        }
+                    })
+                    .catch(err => {
+                        console.warn(err);
+                    });
+            }
 
 		</script>
 
